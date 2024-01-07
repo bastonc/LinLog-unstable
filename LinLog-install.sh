@@ -1,6 +1,6 @@
 #!/bin/bash
 name_app='linlog'
-git_path='https://github.com/bastonc/LinLog-unstable.git'
+git_path='https://github.com/bastonc/linuxlog-2_5.git'
 de=$XDG_CURRENT_DESKTOP
 #echo $de
 dist=`cat /etc/*release | grep -w NAME`
@@ -32,7 +32,7 @@ then
     	sudo apt update
         sudo apt install -y git python3-pip # if git not installed - install it
         sudo apt install -y python3-venv &&
-        sudo apt install -y python3-pyqt5 &&
+        sudo apt install -y python3-PyQt6 &&
         sudo apt install -y mysql-server &&
         sudo systemctl enable mysql &&
         sudo systemctl start mysql &&

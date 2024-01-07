@@ -1,33 +1,45 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
+import signal
 import sys
 
-import PyQt5.QtCore
+
 
 import re
 import os
 import datetime
 import traceback
 import subprocess
+
 import ext
+import cat
+import PyQt6.QtCore
+from PyQt6.QtWidgets import QApplication, QProgressBar, QCheckBox, QMenu, QMessageBox, \
+    QWidget, \
+    QMainWindow, QTableWidget, QTabWidget, QTableWidgetItem, \
+    QLineEdit, QPushButton, QLabel, QVBoxLayout, QHBoxLayout, QComboBox, QPlainTextEdit, QFrame
+from PyQt6.QtCore import pyqtSignal, QObject, QEvent
+from PyQt6.QtGui import QIcon, QFont, QPixmap, QColor, QAction
+from PyQt6 import QtGui, QtCore
+from PyQt6.QtCore import Qt, QRect
+from PyQt6.QtCore import QThread
+
+def SIGSEGV_signal_arises(signalNum, stack):
+    print(f"{signalNum} : SIGSEGV arises")
+    # Your code
+
+signal.signal(signal.SIGSEGV, SIGSEGV_signal_arises)
+
 import json
 import requests
-import cat
 import pymysql
+
 from functools import partial
 from os.path import expanduser
 from pymysql.cursors import DictCursor
 from bs4 import BeautifulSoup
 # from gi.repository import Notify, GdkPixbuf
-from PyQt5.QtWidgets import QApplication, QProgressBar, QCheckBox, QMenu, QMessageBox, QAction, \
-    QWidget, \
-    QMainWindow, QTableWidget, QTabWidget, QTableWidgetItem, \
-    QLineEdit, QPushButton, QLabel, QVBoxLayout, QHBoxLayout, QComboBox, QPlainTextEdit
-from PyQt5.QtCore import pyqtSignal, QObject, QEvent
-from PyQt5.QtGui import QIcon, QFont, QPixmap, QColor
-from PyQt5 import QtGui, QtCore
-from PyQt5.QtCore import Qt
-from PyQt5.QtCore import QThread
+
 from time import gmtime, strftime, localtime, sleep
 
 import internetworker
@@ -233,7 +245,7 @@ class Filter_event_table_qso(QObject):
 
     def eventFilter(self, widget, event):
 
-        if event.type() == QEvent.Wheel:
+        if event.type() == QEvent.Type.Wheel:
             logWindow.append_record()
             print("Scroll__")  # do something useful
             # you could emit a signal here if you wanted
@@ -254,7 +266,7 @@ class Filter(QObject):
                                                         settings=self.settings_dict)
 
     def eventFilter(self, widget, event):
-        if event.type() == QEvent.FocusOut:
+        if event.type() == QEvent.Type.FocusOut:
             # print(f"widget {widget}")
             textCall = logForm.inputCall.text()
 
@@ -289,7 +301,7 @@ class Filter(QObject):
 
             return False
 
-        if event.type() == QEvent.FocusIn:
+        if event.type() == QEvent.Type.FocusIn:
 
             if logForm.inputCall.text() == '':
                 if settingsDict['mode-swl'] != 'enable':
@@ -320,9 +332,10 @@ class Log_Window_2(QWidget):
     def __init__(self):
         super().__init__()
         self.allCollumn = ['QSO_DATE', 'BAND', 'FREQ', 'CALL', 'MODE', 'RST_RCVD', 'RST_SENT', 'TIME_ON',
-                           'NAME', 'QTH', 'COMMENT', 'TIME_OFF', 'EQSL_QSL_SENT', 'CLUBLOG_QSO_UPLOAD_STATUS', 'id']
+                           'NAME', 'QTH', 'COMMENT', 'TIME_OFF', 'EQSL_QSL_SENT', 'CLUBLOG_QSO_UPLOAD_STATUS', 'id', 'select']  #todo add field, 'select' for multi select
         self.fill_flag = 0
         self.qso_last_id = None
+        self.select_id_list = []
         self.read_base_string = ReadStringDb(db=db, parent=self)
         self.read_base_string.dict_from_base.connect(self.fill_qso_table)
         self.read_base_string.fill_complite.connect(self.fill_complited)
@@ -343,7 +356,7 @@ class Log_Window_2(QWidget):
                          int(settingsDict['log-window-height']))
         self.setWindowTitle('LinuxLog | All QSO')
         self.setWindowIcon(QIcon('logo.png'))
-        self.setWindowFlags(Qt.FramelessWindowHint)
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
         self.setWindowOpacity(float(settingsDict['logWindow-opacity']))
         style = "background-color:" + settingsDict['background-color'] + "; color:" + settingsDict[
             'color'] + ";"
@@ -357,7 +370,7 @@ class Log_Window_2(QWidget):
         self.tableWidget_qso.setStyleSheet(style_table)
         fnt = self.tableWidget_qso.font()
         fnt.setPointSize(9)
-        self.tableWidget_qso.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
+        self.tableWidget_qso.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
         self.tableWidget_qso.customContextMenuRequested.connect(self.context_menu)
         self.tableWidget_qso.setFont(fnt)
         self.tableWidget_qso.setColumnCount(len(self.allCollumn))
@@ -376,6 +389,45 @@ class Log_Window_2(QWidget):
         self.refresh_button.setStyleSheet(button_style)
         self.refresh_button.clicked.connect(self.refresh_data_button)
 
+        # Multi delete button
+        self.multi_delete_qso_button = QPushButton("Delete")
+        self.multi_delete_qso_button.setFixedWidth(50)
+        self.multi_delete_qso_button.setFixedHeight(20)
+        self.multi_delete_qso_button.setStyleSheet(button_style)
+        self.multi_delete_qso_button.clicked.connect(self.multi_delete_qso)
+
+        # Multi export button
+        self.multi_export_button = QPushButton("Export to ADI")
+        self.multi_export_button.setFixedWidth(70)
+        self.multi_export_button.setFixedHeight(20)
+        self.multi_export_button.setStyleSheet(button_style)
+        self.multi_export_button.clicked.connect(self.multi_export_qso)
+
+        # Multi send eqsl button
+        self.multi_send_eqsl_button = QPushButton("Send eQSL")
+        self.multi_send_eqsl_button.setFixedWidth(60)
+        self.multi_send_eqsl_button.setFixedHeight(20)
+        self.multi_send_eqsl_button.setStyleSheet(button_style)
+        self.multi_send_eqsl_button.clicked.connect(self.multi_send_eqsl)
+
+        # Multi send to clublog button
+        self.multi_send_clublog_button = QPushButton("Send to ClubLog")
+        self.multi_send_clublog_button.setFixedWidth(80)
+        self.multi_send_clublog_button.setFixedHeight(20)
+        self.multi_send_clublog_button.setStyleSheet(button_style)
+        self.multi_send_clublog_button.clicked.connect(self.multi_send_clublog)
+
+        # Setup multi-function layer
+        self.multi_lay = QHBoxLayout()
+        self.multi_lay.addStretch()
+        self.multi_lay.addWidget(self.multi_export_button)
+        self.multi_lay.addWidget(self.multi_send_eqsl_button)
+        self.multi_lay.addWidget(self.multi_send_clublog_button)
+        self.multi_lay.addWidget(self.multi_delete_qso_button)
+        self.multi_lay.setAlignment(Qt.AlignmentFlag.AlignRight)
+        self.multi_lay.setAlignment(Qt.AlignmentFlag.AlignTop)
+        # self.multi_lay.setGeometry(QRect(0, 0, 300, 10))
+
         # QProgress Bar
         self.load_bar = QProgressBar()
         self.load_bar.setGeometry(30, 40, 200, 25)
@@ -388,7 +440,12 @@ class Log_Window_2(QWidget):
         self.menu_log_button = QHBoxLayout()
         self.menu_log_button.addWidget(self.refresh_button)
         self.menu_log_button.addWidget(self.load_bar)
-        self.menu_log_button.setAlignment(Qt.AlignLeft)
+        self.multi_frame = QFrame()
+        self.multi_frame.setLayout(self.multi_lay)
+        self.multi_frame.setFixedHeight(30)
+        self.multi_frame.hide()
+        self.menu_log_button.addWidget(self.multi_frame)
+        self.menu_log_button.setAlignment(Qt.AlignmentFlag.AlignLeft)
 
         # Set layouts
         self.layout = QVBoxLayout()
@@ -1052,7 +1109,7 @@ class Log_Window_2(QWidget):
 
     def changeEvent(self, event):
 
-        if event.type() == QtCore.QEvent.WindowStateChange:
+        if event.type() == QtCore.QEvent.Type.WindowStateChange:
             if self.isMinimized():
                 settingsDict['log-window'] = 'False'
                 # print("log-window: changeEvent:_>", settingsDict['log-window'])
@@ -1080,7 +1137,7 @@ class Log_Window_2(QWidget):
                                              col,
                                              self.protectionItem(
                                                  str(dict_db[field]),
-                                                 Qt.ItemIsSelectable | Qt.ItemIsEnabled))
+                                                 Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled))
                 self.tableWidget_qso.item(row, col).setForeground(
                     QColor(settingsDict["color-table"]))
 
@@ -1090,7 +1147,7 @@ class Log_Window_2(QWidget):
                     row, col,
                     self.protectionItem(
                         QTableWidgetItem(date),
-                        Qt.ItemIsSelectable | Qt.ItemIsEnabled
+                        Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled
                     )
                 )
                 self.tableWidget_qso.item(row, col).setForeground(
@@ -1102,7 +1159,7 @@ class Log_Window_2(QWidget):
                     row, col,
                     self.protectionItem(
                         QTableWidgetItem(time),
-                        Qt.ItemIsSelectable | Qt.ItemIsEnabled
+                        Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled
                     )
                 )
                 self.tableWidget_qso.item(row, col).setForeground(
@@ -1115,12 +1172,28 @@ class Log_Window_2(QWidget):
                     row, col,
                     self.protectionItem(
                         QTableWidgetItem(time),
-                        Qt.ItemIsSelectable | Qt.ItemIsEnabled
+                        Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled
                     )
                 )
                 self.tableWidget_qso.item(row, col).setForeground(
                     QColor(settingsDict["color-table"]))
-
+            elif field == "select":
+                self.select_checkbox = QCheckBox()
+                self.select_checkbox.setStyleSheet("QCheckBox::indicator"
+                                                   "{ border : 1px solid " + settingsDict["color-table"] + "; "
+                                                   "width: 10px;"
+                                                   "height: 10px;"
+                                                   "border-radius: 3px; }"
+                                                   "QCheckBox::indicator:checked"
+                                                   "{border: 2px solid rgb(255, 90, 90);"
+                                                   "width: 10px;"
+                                                   "height: 10px;"
+                                                   "border-radius: 5px;"
+                                                   "background-color:" + settingsDict["color-table"] + ";"
+                                                    "}")
+                self.select_checkbox.stateChanged.connect(self.multi_select_cheked)
+                self.tableWidget_qso.setItem(row,col, QTableWidgetItem(""))
+                self.tableWidget_qso.setCellWidget(row, col, self.select_checkbox)
             else:
                 if dict_db[field] == "None":
                     dict_db[field] = ""
@@ -1128,7 +1201,7 @@ class Log_Window_2(QWidget):
                     row, col,
                     self.protectionItem(
                         str(dict_db[field]),
-                        Qt.ItemIsSelectable | Qt.ItemIsEnabled)
+                        Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
                 )
                 self.tableWidget_qso.item(row, col).setForeground(
                     QColor(settingsDict["color-table"]))
@@ -1138,12 +1211,55 @@ class Log_Window_2(QWidget):
                     QColor(settingsDict['eqsl-sent-color']))
         self.load_bar.setValue(round(row * 100 / len(self.allRows)))
 
+    def multi_select_cheked(self):
+        self.select_id_list.clear()
+        for row in range(self.tableWidget_qso.rowCount()):
+            if self.tableWidget_qso.cellWidget(row, self.tableWidget_qso.columnCount() - 1).isChecked():
+                self.select_id_list.append(self.tableWidget_qso.item(row, self.tableWidget_qso.columnCount() - 2).text())
+
+        if self.select_id_list:
+            self.show_action_buttons()
+        else:
+            self.hide_action_buttons()
+
+        print(f"id list {self.select_id_list}")
+        print("checked")
+
+    def show_action_buttons(self):
+        self.multi_frame.show()
+
+    def hide_action_buttons(self):
+        self.multi_frame.hide()
+
+    def multi_delete_qso(self):
+        for id in self.select_id_list:
+            print (f"select id: {id}")
+            db.delete_qso(id)
+        self.refresh_data()
+
+
+    #todo multi delete
+
+    def multi_export_qso(self):
+        ...
+    #todo multi export
+
+    def multi_send_eqsl(self):
+        ...
+    #todo multi send eqsl
+
+    def multi_send_clublog(self):
+        ...
+    #todo multi send clublog
+
+
     @QtCore.pyqtSlot(name='fill_complited')
     def fill_complited(self):
-        self.tableWidget_qso.sortByColumn(0, QtCore.Qt.DescendingOrder)
+        self.tableWidget_qso.sortByColumn(0, QtCore.Qt.SortOrder.DescendingOrder)
         self.tableWidget_qso.resizeRowsToContents()
         self.tableWidget_qso.resizeColumnsToContents()
         self.load_bar.hide()
+        self.hide_action_buttons()
         self.fill_flag = 0
 
     @QtCore.pyqtSlot(int, name="counter_qso")
@@ -1278,6 +1394,23 @@ class Log_Window_2(QWidget):
                 time = str(recordObject[self.allCollumn[col]])
                 time_formated = time[:2] + ":" + time[2:4] + ":" + time[4:]
                 self.tableWidget_qso.setItem(0, col, QTableWidgetItem(time_formated))
+            elif self.allCollumn[col] == "select":
+                self.select_checkbox = QCheckBox()
+                self.select_checkbox.setStyleSheet("QCheckBox::indicator"
+                                                   "{ border : 1px solid " + settingsDict["color-table"] + "; "
+                                                   "width: 10px;"
+                                                   "height: 10px;"
+                                                   "border-radius: 3px; }"
+                                                   "QCheckBox::indicator:checked"
+                                                   "{border: 2px solid rgb(255, 90, 90);"
+                                                   "width: 10px;"
+                                                   "height: 10px;"
+                                                   "border-radius: 5px;"
+                                                   "background-color:" + settingsDict["color-table"] + ";"
+                                                   "}")
+                self.select_checkbox.stateChanged.connect(self.multi_select_cheked)
+                self.tableWidget_qso.setItem(0, col, QTableWidgetItem(""))
+                self.tableWidget_qso.setCellWidget(0, col, self.select_checkbox)
             else:
                 self.tableWidget_qso.setItem(0, col, QTableWidgetItem(str(recordObject[self.allCollumn[col]])))
             self.tableWidget_qso.item(0, col).setForeground(QColor(settingsDict['color-table']))
@@ -1370,7 +1503,7 @@ class LogSearch(QWidget):
                          int(settingsDict['log-search-window-width']), int(settingsDict['log-search-window-height']))
         self.setWindowTitle('LinuxLog | Search')
         self.setWindowIcon(QIcon('logo.png'))
-        self.setWindowFlags(Qt.FramelessWindowHint)
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
 
         self.setWindowOpacity(float(settingsDict['logSearch-opacity']))
         style = "background-color:" + settingsDict['background-color'] + "; color:" + settingsDict[
@@ -1418,7 +1551,7 @@ class LogSearch(QWidget):
 
     def changeEvent(self, event):
 
-        if event.type() == QtCore.QEvent.WindowStateChange:
+        if event.type() == QtCore.QEvent.Type.WindowStateChange:
             if self.isMinimized():
                 settingsDict['log-search-window'] = 'False'
             elif self.isVisible():
@@ -1471,7 +1604,7 @@ class LogSearch(QWidget):
         self.setStyleSheet(style)
 
 
-class check_update():
+class check_update:
 
     def __init__(self, APP_VERSION, settingsDict, parrentWindow):
         # super().__init__()
@@ -1492,8 +1625,9 @@ class check_update():
                     self.update_processing(update_obj)
                 else:
                     self.no_new_version()
-        except ConnectionError:
+        except BaseException:
             print(f"Don't connected to update server")
+            self.no_new_version()
 
     def update_processing(self, update_obj):
         update_result = QMessageBox.question(self.parrent, "LinuxLog | Updater",
@@ -1540,7 +1674,7 @@ class About_window(QWidget):
         self.initUI()
 
     def initUI(self):
-        desktop = QApplication.desktop()
+        desktop = QApplication.primaryScreen().availableGeometry()
         # self.setGeometry(100,100,210,100)
         width_coordinate = (desktop.width() / 2) - 100
         height_coordinate = (desktop.height() / 2) - 100
@@ -1562,9 +1696,8 @@ class About_window(QWidget):
         self.about_layer = QVBoxLayout()
         self.image = QPixmap("logo.png")
         self.image_label = QLabel(self)
-        self.image_label.setAlignment(Qt.AlignCenter)
+        self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.image_label.setPixmap(self.image)
-        # about_layer.setAlignment(Qt.AlignCenter)
 
         # Update button
         self.check_update = QPushButton()
@@ -1774,7 +1907,7 @@ class FreqWindow(QWidget):
         if freq.isnumeric():
             freq_to_label = self.freq_to_sting(freq)
             self.freq_label.setText(freq_to_label + " Hz")
-        self.freq_label.setAlignment(Qt.AlignRight)
+        self.freq_label.setAlignment(Qt.AlignmentFlag.AlignRight)
         self.freq_label.setStyleSheet(self.label_style)
         self.freq_label.setFixedHeight(50)
         self.freq_label.setFixedWidth(200)
@@ -1813,11 +1946,11 @@ class FreqWindow(QWidget):
         # memory lay & enter button
         self.buttons_memory_lay = QVBoxLayout()
         self.buttons_memory_lay.addSpacing(10)
-        self.buttons_memory_lay.setAlignment(Qt.AlignCenter)
+        self.buttons_memory_lay.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.buttons_memory_lay.addWidget(self.button_sm)
         self.buttons_memory_lay.addWidget(self.button_up)
         self.memory_bank_num = QHBoxLayout()
-        self.memory_bank_num.setAlignment(Qt.AlignCenter)
+        self.memory_bank_num.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.memory_bank_num.addWidget(self.memory_label)
         self.buttons_memory_lay.addLayout(self.memory_bank_num)
         self.buttons_memory_lay.addWidget(self.button_dn)
@@ -1828,7 +1961,6 @@ class FreqWindow(QWidget):
         self.buttons_memory_lay.addSpacing(15)
         # create NUM layer
         self.num_buttons_lay = QVBoxLayout()
-        # self.num_buttons_lay.setAlignment(Qt.AlignCenter)
         self.num_buttons_lay.addLayout(self.buttons1_3_lay)
         self.num_buttons_lay.addLayout(self.buttons4_6_lay)
         self.num_buttons_lay.addLayout(self.buttons7_9_lay)
@@ -1841,7 +1973,7 @@ class FreqWindow(QWidget):
         self.button_layer.addLayout(self.buttons_memory_lay)
         #
         self.general_lay = QVBoxLayout()
-        self.general_lay.setAlignment(Qt.AlignVCenter)
+        self.general_lay.setAlignment(Qt.AlignmentFlag.AlignVCenter)
         # self.general_lay.
         self.general_lay.addWidget(self.memory_label_show)
         self.general_lay.addWidget(self.freq_label)
@@ -2024,7 +2156,7 @@ class LogForm(QMainWindow):
         self.db = db
         self.db.search_in_db_like_signal.connect(self.olerlap_found_qso)
         self.diplomsCheck()
-        self.qrz_com_ready = False
+        self.qrz_com_ready = True
         self.rigctl_main_loop = None
         self.sender = None
         self.current_spot = None
@@ -2131,7 +2263,7 @@ class LogForm(QMainWindow):
         if self.qrz_com_ready:
             self.qrz_com.get_callsign_info(text_call)
 
-    @PyQt5.QtCore.pyqtSlot(bool)
+    @PyQt6.QtCore.pyqtSlot(bool)
     def qrz_com_status(self, connect):
         if connect:
             self.set_qrz_com_stat()
@@ -2139,14 +2271,15 @@ class LogForm(QMainWindow):
         else:
             self.set_qrz_com_wrong("qrz.com")
 
-    @PyQt5.QtCore.pyqtSlot(object)
+    @PyQt6.QtCore.pyqtSlot(object)
     def qrz_com_error(self, error_message):
         std.std().message(error_message, "QRZ.COM ERROR")
 
-    @PyQt5.QtCore.pyqtSlot(object)
+    @PyQt6.QtCore.pyqtSlot(object)
     def fill_form(self, data):
         print(f"fill_form: {data}")
         if data is not None:
+            self.set_qrz_com_stat()
             if data["f_name"] is not None:
                 self.inputName.setText(data["f_name"])
             elif data["s_name"]:
@@ -2319,19 +2452,19 @@ class LogForm(QMainWindow):
         self.cat_system.stop_cat()
 
     def keyPressEvent(self, e):
-        if e.key() == QtCore.Qt.Key_F5:
+        if e.key() == QtCore.Qt.Key.Key_F5:
             self.full_clear_form()
-        if e.key() == QtCore.Qt.Key_F12:
+        if e.key() == QtCore.Qt.Key.Key_F12:
             self.freq_window()
-        if e.key() == Qt.Key_F2:
+        if e.key() == Qt.Key.Key_F2:
             self.get_prev_spot_on_band()
-        if e.key() == QtCore.Qt.Key_F3:
+        if e.key() == QtCore.Qt.Key.Key_F3:
             self.get_next_spot_on_band()
-        if e.key() == Qt.Key_F4:
+        if e.key() == Qt.Key.Key_F4:
             self.get_prev_general_spot()
-        if e.key() == Qt.Key_F6:
+        if e.key() == Qt.Key.Key_F6:
             self.get_last_general_spot()
-        if e.key() in (QtCore.Qt.Key_Enter, QtCore.Qt.Key_Return):
+        if e.key() in (QtCore.Qt.Key.Key_Enter, QtCore.Qt.Key.Key_Return):
             self.logFormInput()
 
     def get_last_general_spot(self):
@@ -2625,7 +2758,7 @@ class LogForm(QMainWindow):
         return mode
 
     def initUI(self):
-        font = QFont(settingsDict['font-app'], 10, QFont.Normal)
+        font = QFont(settingsDict['font-app'], 10, QFont.Weight.Normal)
 
         QApplication.setFont(font)
         QApplication.setApplicationName('LinuxLog ' + APP_VERSION + ' | ' + settingsDict['my-call'])
@@ -2634,7 +2767,7 @@ class LogForm(QMainWindow):
                          int(settingsDict['log-form-window-width']), int(settingsDict['log-form-window-height']))
         self.setWindowTitle('LinuxLog | Form')
         self.setWindowIcon(QIcon('logo.png'))
-        self.setWindowFlags(Qt.FramelessWindowHint)
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
 
         style = f"background-color:{settingsDict['background-color']}; color: {settingsDict['color']};"
         self.setStyleSheet(style)
@@ -2646,7 +2779,7 @@ class LogForm(QMainWindow):
 
         # labelCall.move(40,40)
         self.inputCall = QLineEdit()
-        self.inputCall.setFocusPolicy(Qt.StrongFocus)
+        self.inputCall.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.inputCall.setStyleSheet(styleform)
         self.inputCall.setFixedWidth(108)
         self.inputCall.setFixedHeight(30)
@@ -2719,7 +2852,8 @@ class LogForm(QMainWindow):
         indexMode = self.comboMode.findText(settingsDict['mode'])
         self.comboMode.setCurrentIndex(indexMode)
         self.comboMode.currentTextChanged.connect(self.changed_mode)
-        self.comboMode.activated[str].connect(self.rememberMode)
+        #self.comboMode.
+        #self.comboMode.activated[str].connect(self.rememberMode)
 
         self.comboBand = QComboBox()
         self.comboBand.setFixedWidth(80)
@@ -2732,27 +2866,27 @@ class LogForm(QMainWindow):
         self.rememberBand
         # TCI label
         self.labelStatusCat = QLabel()
-        self.labelStatusCat.setAlignment(Qt.AlignLeft)
+        self.labelStatusCat.setAlignment(Qt.AlignmentFlag.AlignLeft)
         self.labelStatusCat.setFont(QtGui.QFont('SansSerif', 7))
 
         # cat label
         self.labelStatusCat_cat = QLabel()
-        self.labelStatusCat_cat.setAlignment(Qt.AlignLeft)
+        self.labelStatusCat_cat.setAlignment(Qt.AlignmentFlag.AlignLeft)
         self.labelStatusCat_cat.setFont(QtGui.QFont('SansSerif', 7))
 
         # telnet label
         self.labelStatusTelnet = QLabel()
-        self.labelStatusTelnet.setAlignment(Qt.AlignLeft)
+        self.labelStatusTelnet.setAlignment(Qt.AlignmentFlag.AlignLeft)
         self.labelStatusTelnet.setFont(QtGui.QFont('SansSerif', 7))
 
         # qrz.com label
         self.labelStatusQrzCom = QLabel()
-        self.labelStatusQrzCom.setAlignment(Qt.AlignLeft)
+        self.labelStatusQrzCom.setAlignment(Qt.AlignmentFlag.AlignLeft)
         self.labelStatusQrzCom.setFont(QtGui.QFont('SansSerif', 7))
 
         # Rigctl label
         self.labelStatusRigctl = QLabel()
-        self.labelStatusRigctl.setAlignment(Qt.AlignLeft)
+        self.labelStatusRigctl.setAlignment(Qt.AlignmentFlag.AlignLeft)
         self.labelStatusRigctl.setFont(QtGui.QFont('SansSerif', 7))
 
         # Time label
@@ -2845,13 +2979,12 @@ class LogForm(QMainWindow):
 
         leftRight.addLayout(vBoxLeft)
         leftRight.addLayout(vBoxRight)
-        # leftRight.setAlignment(Qt.AlignHCenter)
 
         vBoxMain.addLayout(hBoxHeader)
         vBoxMain.addLayout(leftRight)
 
         hBoxStatus = QHBoxLayout()
-        hBoxStatus.setAlignment(Qt.AlignRight)
+        hBoxStatus.setAlignment(Qt.AlignmentFlag.AlignRight)
         hBoxStatus.addWidget(self.labelStatusTelnet)
         hBoxStatus.addWidget(self.labelStatusQrzCom)
         hBoxStatus.addWidget(self.labelStatusCat)
@@ -3160,7 +3293,7 @@ class LogForm(QMainWindow):
 
     def changeEvent(self, event):
 
-        if event.type() == QtCore.QEvent.WindowStateChange:
+        if event.type() == QtCore.QEvent.Type.WindowStateChange:
             if self.isMinimized():
                 print("Minimized")
                 if settingsDict['search-internet-window'] == 'True':
@@ -3243,6 +3376,7 @@ class LogForm(QMainWindow):
         if about_window.isEnabled():
             about_window.close()
         self.remember_in_cfg(self.parameter)
+        settingsDict['app'].exit(0)
 
     def remember_in_cfg(self, parameter):
         '''
@@ -3269,6 +3403,7 @@ class LogForm(QMainWindow):
     def logSettings(self):
         # menu_window.show()
         self.menu = settings.Menu(
+            db,
             app_env,
             settingsDict,
             telnetCluster,
@@ -3669,7 +3804,7 @@ class CW(QWidget):
         self.wpm_label.setFixedWidth(30)
         self.wpm_label.setStyleSheet(self.style + " font-size: 10px;")
         self.wpm_lay = QHBoxLayout()
-        self.wpm_lay.setAlignment(Qt.AlignLeft)
+        self.wpm_lay.setAlignment(Qt.AlignmentFlag.AlignLeft)
         self.wpm_lay.addWidget(self.wpm_label)
         self.wpm_lay.addSpacing(7)
         self.wpm_lay.addWidget(self.wpm_linedit)
@@ -3707,7 +3842,7 @@ class CW(QWidget):
         self.status_label.setStyleSheet(self.style + " font-size: 10px;")
         self.set_status(self.wpm_linedit.text().strip())
         self.status_lay = QHBoxLayout()
-        self.status_lay.setAlignment(Qt.AlignRight)
+        self.status_lay.setAlignment(Qt.AlignmentFlag.AlignRight)
         self.status_lay.addSpacing(15)
         self.status_lay.addWidget(self.status_label)
 
@@ -3898,7 +4033,7 @@ class TelnetCluster(QWidget):
                          int(settingsDict['telnet-cluster-window-height']))
         self.setWindowTitle('Telnet cluster')
         self.setWindowIcon(QIcon('logo.png'))
-        self.setWindowFlags(Qt.FramelessWindowHint)
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
         self.setWindowOpacity(float(settingsDict['clusterWindow-opacity']))
         style = "background-color:" + settingsDict['background-color'] + "; color:" + settingsDict[
             'color'] + ";"
@@ -4033,7 +4168,7 @@ class TelnetCluster(QWidget):
                 "complete": complete,
                 "comment": comment,
                 "de": de,
-                "timestamp": datetime.datetime.utcnow()
+                "timestamp": datetime.datetime.now(datetime.UTC)
             })
             return spot_data_dict
 
@@ -4203,7 +4338,7 @@ class TelnetCluster(QWidget):
 
     def changeEvent(self, event):
 
-        if event.type() == QtCore.QEvent.WindowStateChange:
+        if event.type() == QtCore.QEvent.Type.WindowStateChange:
             if self.isMinimized():
                 settingsDict['telnet-cluster-window'] = 'False'
                 print("telnet-cluster-window: changeEvent:_>", settingsDict['telnet-cluster-window'])
@@ -4250,7 +4385,7 @@ class InternetSearch(QWidget):
         self.hbox = QHBoxLayout(self)
         self.pixmap = QPixmap("logo.png")
         self.labelImage = QLabel(self)
-        self.labelImage.setAlignment(Qt.AlignCenter)
+        self.labelImage.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.labelImage.setPixmap(self.pixmap)
         self.hbox.addWidget(self.labelImage)
         self.setLayout(self.hbox)
@@ -4263,7 +4398,7 @@ class InternetSearch(QWidget):
         self.setWindowTitle('Telnet cluster')
         self.setWindowIcon(QIcon('logo.png'))
         self.setWindowTitle('Image from internet')
-        self.setWindowFlags(Qt.FramelessWindowHint)
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
         self.setWindowOpacity(float(settingsDict['searchInetWindow-opacity']))
         style = "QWidget{background-color:" + settingsDict['background-color'] + "; color:" + settingsDict[
             'color'] + ";}"
@@ -4366,13 +4501,12 @@ class hello_window(QWidget):
         self.call_input.setFixedWidth(150)
         self.ok_button = QPushButton("GO")
         self.ok_button.clicked.connect(self.ok_button_push)
-        # self.caption_label.setAlignment(Qt.AlignCenter)
         vbox = QVBoxLayout()
         vbox.addWidget(self.caption_label)
         vbox.addWidget(self.welcome_text_label)
         vbox.addWidget(self.call_input)
         vbox.addWidget(self.ok_button)
-        vbox.setAlignment(Qt.AlignCenter)
+        vbox.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.setLayout(vbox)
         self.show()
@@ -4510,7 +4644,7 @@ class Db(QObject):
         self.connection_sql()
         self.connect_to_sql = self.connect_sql()
         # self.db_conn =
-        print("Create and run FoundThread")
+        # print("Create and run FoundThread")
 
 
     def connection_sql(self):
@@ -4522,6 +4656,15 @@ class Db(QObject):
             charset=self.db_charset,
             cursorclass=DictCursor
         )
+
+    def delete_all_qso(self):
+        query_string = f"DELETE FROM {self.settingsDict['my-call']} WHERE 1;"
+        sql_connect = self.connect_sql()
+        query = sql_connect.cursor()
+        query.execute(query_string)
+        result = sql_connect.commit()
+        return result
+
     def getQsoByCallPattern(self, patern):
         query = self.connect_sql().cursor()
         query.execute("SELECT * FROM " + self.settingsDict['my-call'] +
@@ -4626,13 +4769,13 @@ class Db(QObject):
 
     def record_qso_to_base(self, qso_dict, mode=''):
         db_conn = self.connect_sql()
-        print(qso_dict['TIME_ON'], len(qso_dict['TIME_ON'].strip()))
         if len(qso_dict['TIME_ON'].strip()) == 4:
             time_format = qso_dict['TIME_ON'] + "00"
-            print("time_format:", time_format)
+            # print("time_format:", time_format)
         else:
             time_format = qso_dict['TIME_ON']
-        if qso_dict.get('TIME_OFF') == '' or qso_dict.get('TIME_OFF') is None:
+        if len(str(qso_dict.get('TIME_OFF')).strip()) == 0 or qso_dict.get('TIME_OFF') is None:
+            # print(f"Time_OFF none")
             time_off_format = time_format
         else:
             if len(qso_dict['TIME_OFF'].strip()) == 4:
@@ -4704,8 +4847,6 @@ class Db(QObject):
 
         return last_id
 
-    # def to_standart_qso_fields(self, qso_dict):
-    #     if qso_dict.get("CALL") == None or qso_dict.get("CALL") ==
     def check_table(self, name_table):
         db_conn = self.connect_sql()
         sql_query = "SHOW TABLES LIKE" + name_table + ";"
@@ -4842,7 +4983,7 @@ class AppEnv:
 
 
 if __name__ == '__main__':
-
+    #exit(0)
     APP_VERSION = '2.5.0'
     settingsDict = {}
     settingsDict.update({"APP_VERSION": APP_VERSION})
@@ -4884,6 +5025,7 @@ if __name__ == '__main__':
         ["RST_SENT", "VARCHAR(50)"],
     ]
     settingsDict.update({"db_fields": [field[0] for field in table_columns]})
+
     file = open('settings.cfg', "r")
     for configstring in file:
         if configstring != '' and configstring != ' ' and configstring[0] != '#':
@@ -4893,9 +5035,9 @@ if __name__ == '__main__':
             splitString = configstring.split('=')
             settingsDict.update({splitString[0]: splitString[1]})
     file.close()
-
     ####
     app = QApplication(sys.argv)
+    settingsDict.update({"app":app})
     flag = 1
     if settingsDict['my-call'] == "":
         hello_window = hello_window(table_columns)
@@ -4930,9 +5072,7 @@ if __name__ == '__main__':
                 db_connect = db.connect_sql()
                 print("Create DB Linuxlog")
             except Exception:
-                # Messages("<span style='color: red;'>STOP</span>", "Can't connected to Database\nCheck DB parameters in settings.cfg")
                 subprocess.call(["python3", "help_system.py-old", 'db-error'])
-                # Help("db")
                 exit(1)
 
         # global table_columns
@@ -4975,5 +5115,4 @@ if __name__ == '__main__':
             tci_recv.start_tci(settingsDict["tci-server"], settingsDict["tci-port"])
         tci_sndr = tci.Tci_sender(settingsDict["tci-server"] + ":" + settingsDict["tci-port"], "Disable", logForm)
 
-
-    sys.exit(app.exec_())
+    sys.exit(app.exec())
